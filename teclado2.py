@@ -10,6 +10,9 @@ import os
 
 class WaylandTouchKeyboard:
     def __init__(self):
+        # Configurar socket de ydotool antes de crear la interfaz
+        self.configure_ydotool_socket()
+        
         self.root = tk.Tk()
         self.root.title("Teclado Virtual Wayland")
         self.root.overrideredirect(True)
@@ -70,6 +73,32 @@ class WaylandTouchKeyboard:
         self.start_wifi_monitoring()
 
         self.root.mainloop()
+
+    def configure_ydotool_socket(self):
+        """Buscar y configurar el socket de ydotool automáticamente"""
+        # Si ya está configurado, usar ese
+        if 'YDOTOOL_SOCKET' in os.environ and os.path.exists(os.environ['YDOTOOL_SOCKET']):
+            print(f"✅ Usando socket configurado: {os.environ['YDOTOOL_SOCKET']}")
+            return
+        
+        # Buscar en ubicaciones comunes
+        uid = os.getuid()
+        possible_sockets = [
+            f"/run/user/{uid}/.ydotool_socket",
+            "/tmp/.ydotool_socket",
+            "/run/ydotool/.ydotool_socket",
+            os.path.expanduser("~/.ydotool_socket"),
+        ]
+        
+        for socket_path in possible_sockets:
+            if os.path.exists(socket_path):
+                os.environ['YDOTOOL_SOCKET'] = socket_path
+                print(f"✅ Socket encontrado: {socket_path}")
+                return
+        
+        print("⚠️  No se encontró el socket de ydotool")
+        print(f"   Se esperaba en: /run/user/{uid}/.ydotool_socket")
+        print("   o en: /tmp/.ydotool_socket")
 
     def type_text_wayland(self, text):
         """Escribir texto usando ydotool (compatible con Wayland)"""
@@ -612,19 +641,82 @@ class WaylandTouchKeyboard:
         widget.bind("<B1-Motion>", on_drag)
         widget.bind("<ButtonRelease-1>", end_drag)
 
+def check_and_start_ydotoold():
+    """Verificar y arrancar ydotoold si no está corriendo"""
+    # Verificar si ydotoold está corriendo
+    result = subprocess.run(['pgrep', '-x', 'ydotoold'], capture_output=True)
+    
+    if result.returncode != 0:
+        print("⚠️  ydotoold no está corriendo. Intentando iniciar...")
+        
+        # Intentar iniciar con systemd (usuario)
+        try:
+            result = subprocess.run(['systemctl', '--user', 'start', 'ydotool'], 
+                                  capture_output=True, timeout=5)
+            if result.returncode == 0:
+                print("✅ ydotool iniciado con systemd")
+                time.sleep(2)  # Esperar a que se inicie
+                return True
+        except:
+            pass
+        
+        # Intentar iniciar con systemd (sistema)
+        try:
+            result = subprocess.run(['sudo', 'systemctl', 'start', 'ydotool'], 
+                                  capture_output=True, timeout=5)
+            if result.returncode == 0:
+                print("✅ ydotool iniciado con systemd (sistema)")
+                time.sleep(2)
+                return True
+        except:
+            pass
+        
+        # Intentar iniciar manualmente en background
+        try:
+            print("🔧 Intentando iniciar ydotoold manualmente...")
+            print("   Puede requerir contraseña de sudo...")
+            
+            # Iniciar en background
+            subprocess.Popen(['sudo', 'ydotoold'], 
+                           stdout=subprocess.DEVNULL, 
+                           stderr=subprocess.DEVNULL)
+            
+            # Esperar y verificar
+            time.sleep(3)
+            result = subprocess.run(['pgrep', '-x', 'ydotoold'], capture_output=True)
+            if result.returncode == 0:
+                print("✅ ydotoold iniciado correctamente")
+                return True
+            else:
+                print("❌ No se pudo iniciar ydotoold automáticamente")
+                return False
+                
+        except Exception as e:
+            print(f"❌ Error al iniciar ydotoold: {e}")
+            return False
+    
+    return True  # Ya estaba corriendo
+
 def main():
     """Función principal con verificación de dependencias"""
     try:
         # Verificar ydotool
         result = subprocess.run(['which', 'ydotool'], check=True, capture_output=True)
         
-        # Verificar que el servicio ydotoold esté corriendo
-        result = subprocess.run(['pgrep', '-x', 'ydotoold'], capture_output=True)
-        if result.returncode != 0:
-            print("⚠️  ADVERTENCIA: El demonio ydotoold no está corriendo.")
-            print("   Inicia el servicio con: sudo systemctl start ydotool")
-            print("   O ejecuta manualmente: sudo ydotoold")
-            print("\nIntentando iniciar de todas formas...")
+        # Verificar y arrancar ydotoold
+        if not check_and_start_ydotoold():
+            print("\n📋 SOLUCIONES:")
+            print("\n1️⃣  Iniciar manualmente (en otra terminal):")
+            print("   sudo ydotoold")
+            print("\n2️⃣  Configurar servicio systemd:")
+            print("   ./install_wayland_keyboard.sh")
+            print("\n3️⃣  Verificar permisos:")
+            print("   groups | grep input")
+            print("   Si 'input' no aparece:")
+            print("   sudo usermod -aG input $USER")
+            print("   Luego cierra sesión y vuelve a entrar")
+            print("\n⚠️  Continuando de todas formas...")
+            time.sleep(2)
         
         WaylandTouchKeyboard()
         
@@ -634,9 +726,8 @@ def main():
         print("   Ubuntu/Debian: sudo apt install ydotool")
         print("   Arch: sudo pacman -S ydotool")
         print("   Fedora: sudo dnf install ydotool")
-        print("\n🔧 Después de instalar, iniciar el servicio:")
-        print("   sudo systemctl enable --now ydotool")
-        print("   O manualmente: sudo ydotoold &")
+        print("\n🔧 Después de instalar, ejecuta:")
+        print("   ./install_wayland_keyboard.sh")
         sys.exit(1)
     except Exception as e:
         print(f"❌ Error: {e}")
