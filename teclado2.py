@@ -11,7 +11,7 @@ import os
 class WaylandTouchKeyboard:
     def __init__(self):
         self.root = tk.Tk()
-        self.root.title("Teclado Virtual Pro - Wayland")
+        self.root.title("Teclado Virtual Wayland")
         self.root.overrideredirect(True)
         self.root.attributes("-topmost", True)
         self.root.attributes("-alpha", 0.7)
@@ -29,17 +29,6 @@ class WaylandTouchKeyboard:
         self.wifi_signal_strength = 0
         self.wifi_checking = False
         self.wifi_btn = None
-
-        # Verificar herramientas disponibles
-        self.input_method = self.detect_input_method()
-        if not self.input_method:
-            print("ERROR: No se encontró ningún método de entrada compatible")
-            print("Instalando ydotool...")
-            self.install_ydotool()
-            self.input_method = self.detect_input_method()
-            if not self.input_method:
-                print("No se pudo instalar ydotool. Saliendo...")
-                sys.exit(1)
 
         # Colores del tema
         self.colors = {
@@ -80,157 +69,54 @@ class WaylandTouchKeyboard:
         # Iniciar verificación de WiFi
         self.start_wifi_monitoring()
 
-        print(f"Teclado iniciado usando: {self.input_method}")
         self.root.mainloop()
 
-    def detect_input_method(self):
-        """Detectar qué método de entrada está disponible"""
-        methods = ['ydotool', 'wtype', 'dotool']
-        
-        for method in methods:
-            try:
-                result = subprocess.run(['which', method], 
-                                      capture_output=True, 
-                                      text=True, 
-                                      timeout=2)
-                if result.returncode == 0:
-                    # Verificar que realmente funcione
-                    if method == 'ydotool':
-                        # Verificar permisos del daemon
-                        test = subprocess.run(['ydotool', 'type', ''], 
-                                            capture_output=True, 
-                                            timeout=2)
-                        if test.returncode == 0 or test.returncode == 1:
-                            return method
-                    else:
-                        return method
-            except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError):
-                continue
-        
-        return None
-
-    def install_ydotool(self):
-        """Intentar instalar ydotool"""
+    def type_text_wayland(self, text):
+        """Escribir texto usando ydotool (compatible con Wayland)"""
         try:
-            print("Intentando instalar ydotool...")
-            subprocess.run(['sudo', 'apt-get', 'update'], check=False)
-            subprocess.run(['sudo', 'apt-get', 'install', '-y', 'ydotool'], check=False)
-            
-            # Iniciar daemon de ydotool
-            print("Iniciando daemon de ydotool...")
-            subprocess.Popen(['sudo', 'ydotoold'], 
-                           stdout=subprocess.DEVNULL, 
-                           stderr=subprocess.DEVNULL)
-            time.sleep(2)
-        except Exception as e:
-            print(f"Error instalando ydotool: {e}")
-
-    def send_key(self, key):
-        """Enviar tecla usando el método disponible"""
-        try:
-            if self.input_method == 'ydotool':
-                return self.send_key_ydotool(key)
-            elif self.input_method == 'wtype':
-                return self.send_key_wtype(key)
-            elif self.input_method == 'dotool':
-                return self.send_key_dotool(key)
-            else:
-                print("No hay método de entrada disponible")
-                return False
-        except Exception as e:
-            print(f"Error enviando tecla: {e}")
+            subprocess.run(['ydotool', 'type', text], check=True)
+            return True
+        except subprocess.CalledProcessError as e:
+            print(f"Error con ydotool: {e}")
+            return False
+        except FileNotFoundError:
+            print("ydotool no está instalado o no está en PATH")
             return False
 
-    def send_key_ydotool(self, key):
-        """Enviar tecla usando ydotool"""
-        # Mapeo de teclas especiales para ydotool
-        special_keys = {
-            'space': '32:1 32:0',
-            'BackSpace': '14:1 14:0',
-            'Return': '28:1 28:0',
-            'Up': '103:1 103:0',
-            'Down': '108:1 108:0',
-            'Left': '105:1 105:0',
-            'Right': '106:1 106:0',
-            'Shift_L': '42:1 42:0',
-            'Tab': '15:1 15:0'
-        }
-
-        if key in special_keys:
-            cmd = ['ydotool', 'key'] + special_keys[key].split()
-            subprocess.run(cmd, check=True, timeout=1)
-        else:
-            subprocess.run(['ydotool', 'type', key], check=True, timeout=1)
-        
-        return True
-
-    def send_key_wtype(self, key):
-        """Enviar tecla usando wtype"""
-        special_keys = {
-            'space': ' ',
-            'BackSpace': '-k backspace',
-            'Return': '-k return',
-            'Up': '-k up',
-            'Down': '-k down',
-            'Left': '-k left',
-            'Right': '-k right'
-        }
-
-        if key in special_keys:
-            if special_keys[key].startswith('-k'):
-                subprocess.run(['wtype'] + special_keys[key].split(), check=True, timeout=1)
-            else:
-                subprocess.run(['wtype', special_keys[key]], check=True, timeout=1)
-        else:
-            subprocess.run(['wtype', key], check=True, timeout=1)
-        
-        return True
-
-    def send_key_dotool(self, key):
-        """Enviar tecla usando dotool"""
-        special_keys = {
-            'space': 'key space',
-            'BackSpace': 'key backspace',
-            'Return': 'key enter',
-            'Up': 'key up',
-            'Down': 'key down',
-            'Left': 'key left',
-            'Right': 'key right'
-        }
-
-        if key in special_keys:
-            cmd = f"echo '{special_keys[key]}' | dotool"
-            subprocess.run(cmd, shell=True, check=True, timeout=1)
-        else:
-            cmd = f"echo 'type {key}' | dotool"
-            subprocess.run(cmd, shell=True, check=True, timeout=1)
-        
-        return True
+    def press_key_wayland(self, key):
+        """Presionar una tecla usando ydotool"""
+        try:
+            subprocess.run(['ydotool', 'key', key], check=True)
+            return True
+        except subprocess.CalledProcessError as e:
+            print(f"Error con ydotool: {e}")
+            return False
+        except FileNotFoundError:
+            print("ydotool no está instalado")
+            return False
 
     def get_wifi_signal_strength(self):
         """Obtener nivel de señal WiFi"""
         try:
-            # Método 1: nmcli (Network Manager)
+            # Intentar con nmcli (más común en Wayland)
             result = subprocess.run(['nmcli', '-t', '-f', 'ACTIVE,SIGNAL', 'dev', 'wifi'], 
-                                  capture_output=True, text=True, timeout=5)
+                                  capture_output=True, text=True, timeout=3)
             if result.returncode == 0:
-                lines = result.stdout.strip().split('\n')
-                for line in lines:
-                    if line.startswith('yes:') or line.startswith('sí:'):
+                for line in result.stdout.split('\n'):
+                    if line.startswith('yes:'):
+                        signal = line.split(':')[1]
                         try:
-                            signal = int(line.split(':')[1])
-                            if signal >= 70:
-                                return 3
-                            elif signal >= 40:
-                                return 2
-                            elif signal >= 10:
-                                return 1
-                            else:
-                                return 0
-                        except (ValueError, IndexError):
+                            signal_value = int(signal)
+                            if signal_value >= 70:
+                                return 3  # Alta
+                            elif signal_value >= 40:
+                                return 2  # Media
+                            elif signal_value >= 10:
+                                return 1  # Baja
+                        except ValueError:
                             pass
             
-            # Método 2: iwconfig
+            # Método alternativo con iwconfig
             result = subprocess.run(['iwconfig'], capture_output=True, text=True, timeout=5)
             if result.returncode == 0:
                 lines = result.stdout.split('\n')
@@ -249,10 +135,9 @@ class WaylandTouchKeyboard:
                                     return 2
                                 elif percentage >= 10:
                                     return 1
-                                else:
-                                    return 0
+                        return 1
             
-            # Método 3: Verificar conectividad básica
+            # Verificar conectividad con ping
             ping_result = subprocess.run(['ping', '-c', '1', '-W', '2', '8.8.8.8'], 
                                        capture_output=True, timeout=4)
             if ping_result.returncode == 0:
@@ -327,22 +212,17 @@ class WaylandTouchKeyboard:
     def on_wifi_click(self):
         """Acción al hacer click en el botón WiFi"""
         try:
-            # Intentar diferentes herramientas de configuración de red
-            tools = [
-                ['nm-connection-editor'],
-                ['gnome-control-center', 'network'],
-                ['nmtui'],
-                ['x-terminal-emulator', '-e', 'nmtui']
-            ]
-            
-            for tool in tools:
+            # Para GNOME en Wayland
+            subprocess.run(['gnome-control-center', 'wifi'], check=False)
+        except:
+            try:
+                # Alternativa con nmcli TUI
+                subprocess.run(['gnome-terminal', '--', 'nmtui'], check=False)
+            except:
                 try:
-                    subprocess.Popen(tool, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                    break
-                except FileNotFoundError:
-                    continue
-        except Exception as e:
-            print(f"No se pudo abrir configuración de red: {e}")
+                    subprocess.run(['nm-connection-editor'], check=False)
+                except:
+                    print("No se pudo abrir configuración de red")
 
     def create_floating_button(self):
         """Crear botón flotante principal"""
@@ -359,7 +239,7 @@ class WaylandTouchKeyboard:
         self.floating_btn = tk.Button(
             self.btn_frame,
             text="⌨",
-            font=("Sans", button_size, "bold"),
+            font=("Segoe UI", button_size, "bold"),
             bg=self.colors['gradient_start'],
             fg='white',
             activebackground=self.colors['gradient_end'],
@@ -409,8 +289,8 @@ class WaylandTouchKeyboard:
 
         title_label = tk.Label(
             self.title_frame,
-            text=f"TECLADO VIRTUAL - {self.input_method.upper()}",
-            font=("Sans", 12, "bold"),
+            text="TECLADO VIRTUAL WAYLAND",
+            font=("Segoe UI", 12, "bold"),
             bg=self.colors['secondary'],
             fg=self.colors['light'],
             cursor='hand2'
@@ -430,7 +310,7 @@ class WaylandTouchKeyboard:
         self.wifi_btn = tk.Button(
             control_frame,
             text="●●●",
-            font=("Sans", 10, "bold"),
+            font=("Segoe UI", 10, "bold"),
             bg=self.colors['wifi_checking'],
             fg='#FFFFFF',
             activebackground='#FFFFFF',
@@ -447,7 +327,7 @@ class WaylandTouchKeyboard:
         reload_btn = tk.Button(
             control_frame,
             text="⟲",
-            font=("Sans", 14, "bold"),
+            font=("Segoe UI", 14, "bold"),
             bg=self.colors['reload'],
             fg='#FFFFFF',
             activebackground='#FFFFFF',
@@ -463,11 +343,11 @@ class WaylandTouchKeyboard:
         reload_btn.bind("<Enter>", lambda e: reload_btn.config(bg='#FFFFFF', fg='#000000'))
         reload_btn.bind("<Leave>", lambda e: reload_btn.config(bg=self.colors['reload'], fg='#FFFFFF'))
 
-        # Botón cerrar
+        # Botón de cerrar
         close_btn = tk.Button(
             control_frame,
             text="✕",
-            font=("Sans", 12, "bold"),
+            font=("Segoe UI", 12, "bold"),
             bg='#222222',
             fg='#FFFFFF',
             activebackground='#FFFFFF',
@@ -483,28 +363,26 @@ class WaylandTouchKeyboard:
         close_btn.bind("<Enter>", lambda e: close_btn.config(bg='#FFFFFF', fg='#000000'))
         close_btn.bind("<Leave>", lambda e: close_btn.config(bg='#222222', fg='#FFFFFF'))
 
-        # Frame para teclas
+        # Frame para las teclas
         self.keys_frame = tk.Frame(main_frame, bg=self.colors['primary'])
         self.keys_frame.pack(expand=True, fill='both')
 
         self.create_all_keys()
 
     def reload_page(self):
-        """Recargar página"""
+        """Recargar página usando ydotool"""
         try:
-            if self.input_method == 'ydotool':
-                # Ctrl+R en ydotool
-                subprocess.run(['ydotool', 'key', '29:1', '19:1', '19:0', '29:0'], timeout=2)
-            elif self.input_method == 'wtype':
-                subprocess.run(['wtype', '-M', 'ctrl', '-P', 'r', '-m', 'ctrl'], timeout=2)
-            elif self.input_method == 'dotool':
-                subprocess.run("echo 'keydown leftctrl\nkey r\nkeyup leftctrl' | dotool", 
-                             shell=True, timeout=2)
-        except Exception as e:
-            print(f"Error recargando página: {e}")
+            # Ctrl+R para Wayland
+            self.press_key_wayland('29:1 19:1 19:0 29:0')  # Ctrl+R
+        except:
+            try:
+                # Alternativa F5
+                self.press_key_wayland('63:1 63:0')  # F5
+            except:
+                print("Error: No se pudo recargar la página")
 
     def create_all_keys(self):
-        """Crear layout del teclado"""
+        """Crear todo el layout del teclado"""
         self.key_layouts = {
             'normal': [
                 ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '='],
@@ -524,7 +402,7 @@ class WaylandTouchKeyboard:
         self.create_special_row_with_arrows()
 
     def create_main_rows(self):
-        """Crear filas principales"""
+        """Crear las filas principales del teclado"""
         current_layout = self.key_layouts['shift' if self.caps_lock or self.shift_active else 'normal']
 
         for row_idx, row in enumerate(current_layout):
@@ -553,7 +431,7 @@ class WaylandTouchKeyboard:
                     btn.pack(side='left', padx=2, pady=2, fill='both', expand=True)
 
     def create_special_row_with_arrows(self):
-        """Crear fila especial con Caps Lock, barra espaciadora y flechas"""
+        """Crear fila especial con Caps, espacio y flechas"""
         special_frame = tk.Frame(self.keys_frame, bg=self.colors['primary'])
         special_frame.pack(fill='x', pady=5)
 
@@ -577,11 +455,11 @@ class WaylandTouchKeyboard:
         right_btn.pack(side='left', padx=2, pady=2, fill='both')
 
     def create_key_button(self, parent, text, bg_color):
-        """Crear botón de tecla"""
+        """Crear botón de tecla individual"""
         btn = tk.Button(
             parent,
             text=text,
-            font=("Sans", 12, "bold"),
+            font=("Segoe UI", 12, "bold"),
             bg=bg_color,
             fg='#FFFFFF',
             activebackground='#FFFFFF',
@@ -599,7 +477,7 @@ class WaylandTouchKeyboard:
         return btn
 
     def handle_key_press(self, key):
-        """Manejar pulsaciones de teclas"""
+        """Manejar pulsaciones de teclas con ydotool"""
         try:
             if key == 'Caps':
                 self.toggle_caps_lock()
@@ -608,34 +486,35 @@ class WaylandTouchKeyboard:
                 self.toggle_shift()
                 return
             elif key == 'Espacio':
-                self.send_key('space')
+                self.press_key_wayland('57:1 57:0')  # Space
                 return
             elif key == 'Borrar':
-                self.send_key('BackSpace')
+                self.press_key_wayland('14:1 14:0')  # Backspace
                 return
             elif key == 'Enter':
-                self.send_key('Return')
+                self.press_key_wayland('28:1 28:0')  # Enter
                 return
             elif key == '↑':
-                self.send_key('Up')
+                self.press_key_wayland('103:1 103:0')  # Up
                 return
             elif key == '↓':
-                self.send_key('Down')
+                self.press_key_wayland('108:1 108:0')  # Down
                 return
             elif key == '←':
-                self.send_key('Left')
+                self.press_key_wayland('105:1 105:0')  # Left
                 return
             elif key == '→':
-                self.send_key('Right')
+                self.press_key_wayland('106:1 106:0')  # Right
                 return
 
-            # Teclas normales
+            # Para caracteres normales, usar type
             if self.caps_lock or self.shift_active:
                 if key.isalpha():
                     key = key.upper()
             
-            self.send_key(key)
+            self.type_text_wayland(key)
 
+            # Desactivar shift después de usar
             if self.shift_active:
                 self.shift_active = False
                 self.update_keyboard()
@@ -649,14 +528,15 @@ class WaylandTouchKeyboard:
         self.update_keyboard()
 
     def toggle_shift(self):
-        """Alternar Shift"""
+        """Alternar Shift temporal"""
         self.shift_active = not self.shift_active
         self.update_keyboard()
 
     def update_keyboard(self):
-        """Actualizar teclado completo"""
+        """Actualizar el teclado completo"""
         for widget in self.keys_frame.winfo_children():
             widget.destroy()
+
         self.create_all_keys()
 
     def toggle_keyboard(self):
@@ -693,7 +573,7 @@ class WaylandTouchKeyboard:
         title_widget.bind("<B1-Motion>", on_drag)
 
     def make_draggable(self, widget):
-        """Hacer ventana arrastrable"""
+        """Hacer ventana completamente arrastrable"""
         self.drag_threshold = 10
         self.drag_start_x = 0
         self.drag_start_y = 0
@@ -732,25 +612,34 @@ class WaylandTouchKeyboard:
         widget.bind("<B1-Motion>", on_drag)
         widget.bind("<ButtonRelease-1>", end_drag)
 
-        try:
-            widget.bind("<TouchBegin>", start_drag)
-            widget.bind("<TouchMove>", on_drag)
-            widget.bind("<TouchEnd>", end_drag)
-        except:
-            pass
-
 def main():
-    """Función principal"""
-    print("=== Teclado Virtual para Wayland ===")
-    print("Iniciando...")
-    
+    """Función principal con verificación de dependencias"""
     try:
+        # Verificar ydotool
+        result = subprocess.run(['which', 'ydotool'], check=True, capture_output=True)
+        
+        # Verificar que el servicio ydotoold esté corriendo
+        result = subprocess.run(['pgrep', '-x', 'ydotoold'], capture_output=True)
+        if result.returncode != 0:
+            print("⚠️  ADVERTENCIA: El demonio ydotoold no está corriendo.")
+            print("   Inicia el servicio con: sudo systemctl start ydotool")
+            print("   O ejecuta manualmente: sudo ydotoold")
+            print("\nIntentando iniciar de todas formas...")
+        
         WaylandTouchKeyboard()
-    except KeyboardInterrupt:
-        print("\nTeclado cerrado por el usuario")
-        sys.exit(0)
+        
+    except subprocess.CalledProcessError:
+        print("❌ ERROR: ydotool no está instalado")
+        print("\n📦 Instalar ydotool:")
+        print("   Ubuntu/Debian: sudo apt install ydotool")
+        print("   Arch: sudo pacman -S ydotool")
+        print("   Fedora: sudo dnf install ydotool")
+        print("\n🔧 Después de instalar, iniciar el servicio:")
+        print("   sudo systemctl enable --now ydotool")
+        print("   O manualmente: sudo ydotoold &")
+        sys.exit(1)
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"❌ Error: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":
